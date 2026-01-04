@@ -11,6 +11,7 @@ const KEYS = {
 export interface RegisteredUser {
   id: string;
   name: string;
+  password: string;
   createdAt: string;
 }
 
@@ -30,16 +31,23 @@ export function findRegisteredUserByName(name: string): RegisteredUser | null {
   return users.find((u) => u.name === name) || null;
 }
 
-export function registerUser(name: string): RegisteredUser {
+export function registerUser(name: string, password: string): RegisteredUser {
   const users = getRegisteredUsers();
   const newUser: RegisteredUser = {
     id: generateId(),
     name,
+    password,
     createdAt: new Date().toISOString(),
   };
   users.push(newUser);
   saveRegisteredUsers(users);
   return newUser;
+}
+
+export function verifyUserPassword(name: string, password: string): boolean {
+  const user = findRegisteredUserByName(name);
+  if (!user) return false;
+  return user.password === password;
 }
 
 export function getDiaries(): Diary[] {

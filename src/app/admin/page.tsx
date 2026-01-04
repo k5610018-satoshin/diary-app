@@ -46,6 +46,8 @@ export default function AdminPage() {
   const [spreadsheetId, setSpreadsheetId] = useState(settings.spreadsheetId || "");
   const [isTestingApi, setIsTestingApi] = useState(false);
   const [apiTestResult, setApiTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [isUsersModalOpen, setIsUsersModalOpen] = useState(false);
+  const [registeredUsers, setRegisteredUsers] = useState<storage.RegisteredUser[]>([]);
 
   const filteredDiaries = useFilteredDiaries(diaries, searchQuery, sortOrder);
 
@@ -168,6 +170,12 @@ export default function AdminPage() {
     }
   };
 
+  const handleOpenUsersModal = () => {
+    const users = storage.getRegisteredUsers();
+    setRegisteredUsers(users);
+    setIsUsersModalOpen(true);
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-blue-100 dark:from-zinc-950 dark:via-zinc-900 dark:to-zinc-800 flex items-center justify-center">
@@ -273,6 +281,15 @@ export default function AdminPage() {
             </div>
 
             <div className="flex items-center gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={handleOpenUsersModal}
+                className="rounded-xl flex items-center gap-1"
+              >
+                <Users className="w-4 h-4" />
+                <span className="hidden sm:inline">登録者</span>
+              </Button>
               <Button
                 variant="ghost"
                 size="sm"
@@ -548,8 +565,8 @@ export default function AdminPage() {
             </p>
             {apiTestResult && (
               <div className={`mt-2 p-3 rounded-lg text-sm whitespace-pre-wrap ${apiTestResult.success
-                  ? "bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 border border-green-200 dark:border-green-800"
-                  : "bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800"
+                ? "bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 border border-green-200 dark:border-green-800"
+                : "bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800"
                 }`}>
                 {apiTestResult.message}
               </div>
@@ -652,6 +669,54 @@ export default function AdminPage() {
             >
               削除する
             </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* 登録者一覧モーダル */}
+      <Modal
+        isOpen={isUsersModalOpen}
+        onClose={() => setIsUsersModalOpen(false)}
+        title="登録者一覧"
+        size="md"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-zinc-600 dark:text-zinc-400">
+            登録済みの児童一覧です。パスワードを忘れた場合の確認に使用できます。
+          </p>
+
+          {registeredUsers.length === 0 ? (
+            <div className="text-center py-8 text-zinc-500 dark:text-zinc-400">
+              <Users className="w-12 h-12 mx-auto mb-2 opacity-50" />
+              <p>登録者がいません</p>
+            </div>
+          ) : (
+            <div className="border rounded-xl overflow-hidden">
+              <table className="w-full">
+                <thead className="bg-zinc-100 dark:bg-zinc-800">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-zinc-700 dark:text-zinc-300">名前</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-zinc-700 dark:text-zinc-300">パスワード</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-zinc-700 dark:text-zinc-300">登録日</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-200 dark:divide-zinc-700">
+                  {registeredUsers.map((user) => (
+                    <tr key={user.id} className="hover:bg-zinc-50 dark:hover:bg-zinc-800/50">
+                      <td className="px-4 py-3 text-zinc-800 dark:text-zinc-200 font-medium">{user.name}</td>
+                      <td className="px-4 py-3 text-zinc-600 dark:text-zinc-400 font-mono text-sm">{user.password}</td>
+                      <td className="px-4 py-3 text-zinc-500 dark:text-zinc-500 text-sm">
+                        {format(parseISO(user.createdAt), 'yyyy/MM/dd', { locale: ja })}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <div className="text-xs text-zinc-500 dark:text-zinc-400 bg-amber-50 dark:bg-amber-900/20 p-3 rounded-lg">
+            ⚠️ パスワード情報は児童の個人情報です。取り扱いにご注意ください。
           </div>
         </div>
       </Modal>

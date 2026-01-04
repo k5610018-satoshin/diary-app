@@ -4,12 +4,11 @@ import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { BookOpen, Smile, Users, Lock, AlertCircle } from "lucide-react";
-import { getRegisteredUsers } from "@/lib/localStorage";
+import { BookOpen, Smile, Users, Lock, AlertCircle, UserPlus } from "lucide-react";
+import { getRegisteredUsers, findRegisteredUserByName, verifyUserPassword, registerUser } from "@/lib/localStorage";
 
 const REMEMBERED_NAMES_KEY = "diary-app-remembered-names";
 const MAX_REMEMBERED_NAMES = 10;
-const NEW_USER_PASSWORD = "admin";
 
 // 記憶された名前を取得
 function getRememberedNames(): string[] {
@@ -22,7 +21,6 @@ function getRememberedNames(): string[] {
 function addRememberedName(name: string): void {
   if (typeof window === "undefined") return;
   const names = getRememberedNames();
-  // 既に存在する場合は先頭に移動
   const filtered = names.filter((n) => n !== name);
   const updated = [name, ...filtered].slice(0, MAX_REMEMBERED_NAMES);
   localStorage.setItem(REMEMBERED_NAMES_KEY, JSON.stringify(updated));
@@ -38,10 +36,12 @@ export function LoginForm() {
   const { login } = useAuth();
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [rememberedNames, setRememberedNames] = useState<string[]>([]);
   const [showNameList, setShowNameList] = useState(true);
-  const [showPasswordInput, setShowPasswordInput] = useState(false);
+  const [mode, setMode] = useState<"select" | "login" | "register">("select");
   const [passwordError, setPasswordError] = useState("");
+  const [isExistingUser, setIsExistingUser] = useState(false);
 
   useEffect(() => {
     setRememberedNames(getRememberedNames());
@@ -55,19 +55,18 @@ export function LoginForm() {
 
     // 既存ユーザーかどうか確認
     if (isRegisteredName(trimmedName)) {
-      // 既存ユーザーは直接ログイン
-      addRememberedName(trimmedName);
-      login(trimmedName, "student");
+      setIsExistingUser(true);
+      setMode("login");
     } else {
-      // 新規ユーザーはパスワード入力を要求
-      setShowPasswordInput(true);
-      setPasswordError("");
+      setIsExistingUser(false);
+      setMode("register");
     }
+    setPasswordError("");
   };
 
-  const handlePasswordSubmit = (e: React.FormEvent) => {
+  const handleLoginSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (password === NEW_USER_PASSWORD) {
+    if (verifyUserPassword(name.trim(), password)) {
       addRememberedName(name.trim());
       login(name.trim(), "student");
     } else {
@@ -75,9 +74,38 @@ export function LoginForm() {
     }
   };
 
+  const handleRegisterSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (password.length < 1) {
+      setPasswordError("パスワードを入れてね");
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setPasswordError("パスワードがあってないよ");
+      return;
+    }
+
+    // 新規登録
+    registerUser(name.trim(), password);
+    addRememberedName(name.trim());
+    login(name.trim(), "student");
+  };
+
   const handleSelectName = (selectedName: string) => {
-    addRememberedName(selectedName);
-    login(selectedName, "student");
+    setName(selectedName);
+    setIsExistingUser(true);
+    setMode("login");
+    setPasswordError("");
+  };
+
+  const resetForm = () => {
+    setMode("select");
+    setPassword("");
+    setConfirmPassword("");
+    setPasswordError("");
+    setShowNameList(true);
   };
 
   return (
@@ -98,7 +126,7 @@ export function LoginForm() {
         </div>
 
         {/* 記憶された名前リスト */}
-        {rememberedNames.length > 0 && showNameList && (
+        {mode === "select" && rememberedNames.length > 0 && showNameList && (
           <div className="mb-6">
             <div className="flex items-center gap-2 mb-3">
               <Users className="w-4 h-4 text-amber-600" />
@@ -129,7 +157,7 @@ export function LoginForm() {
         )}
 
         {/* 新規名前入力フォーム */}
-        {(rememberedNames.length === 0 || !showNameList) && !showPasswordInput && (
+        {mode === "select" && (rememberedNames.length === 0 || !showNameList) && (
           <form onSubmit={handleNameSubmit} className="space-y-6">
             <div>
               <label
@@ -172,16 +200,16 @@ export function LoginForm() {
           </form>
         )}
 
-        {/* パスワード入力フォーム（新規登録用） */}
-        {showPasswordInput && (
-          <form onSubmit={handlePasswordSubmit} className="space-y-6">
+        {/* ログインフォーム（既存ユーザー用） */}
+        {mode === "login" && (
+          <form onSubmit={handleLoginSubmit} className="space-y-6">
             <div className="text-center mb-4">
               <div className="inline-flex items-center gap-2 px-4 py-2 bg-amber-100 dark:bg-amber-900/30 rounded-xl">
                 <span className="text-amber-800 dark:text-amber-200 font-medium">
                   {name}
                 </span>
                 <span className="text-amber-600 dark:text-amber-400 text-sm">
-                  さんで登録します
+                  さん おかえり！
                 </span>
               </div>
             </div>
@@ -222,16 +250,98 @@ export function LoginForm() {
               disabled={!password}
             >
               <Smile className="w-5 h-5 mr-2" />
+              ログイン
+            </Button>
+
+            <button
+              type="button"
+              onClick={resetForm}
+              className="w-full text-sm text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors"
+            >
+              もどる
+            </button>
+          </form>
+        )}
+
+        {/* 新規登録フォーム */}
+        {mode === "register" && (
+          <form onSubmit={handleRegisterSubmit} className="space-y-6">
+            <div className="text-center mb-4">
+              <div className="inline-flex items-center gap-2 px-4 py-2 bg-green-100 dark:bg-green-900/30 rounded-xl">
+                <UserPlus className="w-4 h-4 text-green-600 dark:text-green-400" />
+                <span className="text-green-800 dark:text-green-200 font-medium">
+                  {name}
+                </span>
+                <span className="text-green-600 dark:text-green-400 text-sm">
+                  さん はじめまして！
+                </span>
+              </div>
+            </div>
+
+            <div>
+              <label
+                htmlFor="newPassword"
+                className="block text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-2"
+              >
+                <Lock className="w-4 h-4 inline mr-1" />
+                じぶんの パスワードを きめてね
+              </label>
+              <input
+                type="password"
+                id="newPassword"
+                value={password}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  setPasswordError("");
+                }}
+                placeholder="パスワード"
+                className="w-full px-4 py-4 rounded-xl border border-zinc-200/60 dark:border-zinc-700/60 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 dark:placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-green-500/50 focus:border-green-300 dark:focus:border-green-600/50 transition-all shadow-sm hover:shadow-md text-xl text-center"
+                required
+                autoFocus
+              />
+            </div>
+
+            <div>
+              <label
+                htmlFor="confirmPassword"
+                className="block text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-2"
+              >
+                <Lock className="w-4 h-4 inline mr-1" />
+                もういちど おなじパスワード
+              </label>
+              <input
+                type="password"
+                id="confirmPassword"
+                value={confirmPassword}
+                onChange={(e) => {
+                  setConfirmPassword(e.target.value);
+                  setPasswordError("");
+                }}
+                placeholder="パスワード（かくにん）"
+                className="w-full px-4 py-4 rounded-xl border border-zinc-200/60 dark:border-zinc-700/60 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 dark:placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-green-500/50 focus:border-green-300 dark:focus:border-green-600/50 transition-all shadow-sm hover:shadow-md text-xl text-center"
+                required
+              />
+              {passwordError && (
+                <div className="mt-2 flex items-center gap-1 text-red-600 dark:text-red-400 text-sm">
+                  <AlertCircle className="w-4 h-4" />
+                  {passwordError}
+                </div>
+              )}
+            </div>
+
+            <Button
+              type="submit"
+              className="w-full rounded-xl text-lg py-4 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700"
+              size="lg"
+              disabled={!password || !confirmPassword}
+            >
+              <UserPlus className="w-5 h-5 mr-2" />
               登録して はじめる
             </Button>
 
             <button
               type="button"
-              onClick={() => {
-                setShowPasswordInput(false);
-                setPassword("");
-                setPasswordError("");
-              }}
+              onClick={resetForm}
               className="w-full text-sm text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors"
             >
               もどる

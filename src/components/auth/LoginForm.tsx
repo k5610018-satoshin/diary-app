@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Image from "next/image";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { BookOpen, Smile, Users, Lock, AlertCircle, UserPlus } from "lucide-react";
+import { Smile, Users, Lock, AlertCircle, UserPlus } from "lucide-react";
 import { getRegisteredUsers, findRegisteredUserByName, verifyUserPassword, registerUser } from "@/lib/localStorage";
 
 const REMEMBERED_NAMES_KEY = "diary-app-remembered-names";
@@ -112,10 +113,15 @@ export function LoginForm() {
     <div className="min-h-screen bg-gradient-to-br from-amber-50 via-orange-50 to-amber-100 dark:from-zinc-950 dark:via-zinc-900 dark:to-zinc-800 flex items-center justify-center px-4">
       <Card className="w-full max-w-md animate-slide-in">
         <div className="text-center mb-8">
-          <div className="flex justify-center mb-6">
-            <div className="p-5 bg-gradient-to-br from-amber-400 to-amber-600 rounded-2xl shadow-lg">
-              <BookOpen className="w-14 h-14 text-white" />
-            </div>
+          <div className="flex justify-center mb-4">
+            <Image
+              src="/welcome.png"
+              alt="日記帳と鉛筆"
+              width={180}
+              height={180}
+              className="drop-shadow-lg"
+              priority
+            />
           </div>
           <h1 className="text-3xl font-bold bg-gradient-to-r from-amber-700 to-orange-700 dark:from-amber-400 dark:to-orange-400 bg-clip-text text-transparent mb-2">
             My Diary

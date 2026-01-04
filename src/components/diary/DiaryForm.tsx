@@ -96,13 +96,23 @@ export function DiaryForm({ user, geminiApiKey, onSubmit, onCancel }: DiaryFormP
   const handleSubmitToTeacher = async () => {
     setIsSubmitting(true);
 
+    // 追記があれば本文に追加
+    let finalContent = content.trim();
+    if (addition.trim()) {
+      finalContent += "\n\n" + addition.trim();
+    }
+    // 既存の追記リストも本文に追加
+    for (const add of additions) {
+      finalContent += "\n\n" + add.content;
+    }
+
     onSubmit({
       userId: user.id,
       userName: user.name,
       title: title.trim(),
-      content: content.trim(),
+      content: finalContent,
       images: images,
-      additions: additions,
+      additions: [], // 追記は本文に統合したので空にする
       aiFeedback: aiFeedback
         ? {
           feedback: aiFeedback.feedback,

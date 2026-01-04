@@ -2,7 +2,7 @@
 
 import { Diary } from "@/types/diary";
 import { Card } from "@/components/ui/Card";
-import { MessageCircle, Sparkles, Image as ImageIcon } from "lucide-react";
+import { MessageCircle, Image as ImageIcon } from "lucide-react";
 import { format } from "date-fns";
 import { ja } from "date-fns/locale";
 
@@ -13,7 +13,6 @@ interface DiaryCardProps {
 }
 
 export function DiaryCard({ diary, onClick, showUserName = false }: DiaryCardProps) {
-  const hasAIFeedback = !!diary.aiFeedback;
   const hasTeacherComment = diary.teacherComments.length > 0;
   const hasImages = diary.images && diary.images.length > 0;
 
@@ -51,7 +50,8 @@ export function DiaryCard({ diary, onClick, showUserName = false }: DiaryCardPro
         </time>
       </div>
 
-      <p className="text-zinc-600 dark:text-zinc-300 text-sm line-clamp-3 flex-1 leading-relaxed">
+      {/* 日記の内容 */}
+      <p className="text-zinc-600 dark:text-zinc-300 text-sm line-clamp-4 flex-1 leading-relaxed whitespace-pre-line">
         {diary.content}
       </p>
 
@@ -70,27 +70,16 @@ export function DiaryCard({ diary, onClick, showUserName = false }: DiaryCardPro
         </div>
       )}
 
-      {(hasAIFeedback || diary.additions.length > 0 || hasImages) && (
-        <div className="flex items-center gap-2.5 mt-4 pt-4 border-t border-zinc-200/60 dark:border-zinc-700/60 flex-wrap">
-          {hasImages && (
-            <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-2.5 py-1 rounded-lg">
-              <ImageIcon className="w-3.5 h-3.5" />
-              <span>{diary.images.length}枚</span>
-            </div>
-          )}
-          {hasAIFeedback && (
-            <div className="flex items-center gap-1.5 text-xs font-medium text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/20 px-2.5 py-1 rounded-lg">
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>AIフィードバック</span>
-            </div>
-          )}
-          {diary.additions.length > 0 && (
-            <div className="text-xs font-medium text-zinc-500 dark:text-zinc-400 bg-zinc-100 dark:bg-zinc-700/50 px-2.5 py-1 rounded-lg">
-              +{diary.additions.length}件の追記
-            </div>
-          )}
+      {/* 画像バッジ */}
+      {hasImages && (
+        <div className="flex items-center gap-2.5 mt-4 pt-4 border-t border-zinc-200/60 dark:border-zinc-700/60">
+          <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-2.5 py-1 rounded-lg">
+            <ImageIcon className="w-3.5 h-3.5" />
+            <span>{diary.images.length}枚</span>
+          </div>
         </div>
       )}
     </Card>
   );
 }
+

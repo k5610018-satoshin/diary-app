@@ -16,7 +16,7 @@ export function ImageUpload({
   images,
   onChange,
   maxImages = 3,
-  maxSizeKB = 500,
+  maxSizeKB = 5120,
 }: ImageUploadProps) {
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -42,7 +42,8 @@ export function ImageUpload({
 
     // サイズチェック
     if (file.size > maxSizeKB * 1024) {
-      setError(`画像サイズは${maxSizeKB}KB以下にしてください`);
+      const maxSizeMB = Math.round(maxSizeKB / 1024);
+      setError(`画像サイズは${maxSizeMB}MB以下にしてください`);
       return;
     }
 

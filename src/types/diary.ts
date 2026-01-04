@@ -57,6 +57,7 @@ export interface AppSettings {
   geminiApiKey?: string;
   spreadsheetId?: string;
   spreadsheetUrl?: string;
+  appsScriptUrl?: string;
 }
 
 export type SortOrder = "newest" | "oldest";

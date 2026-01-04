@@ -44,6 +44,7 @@ export default function AdminPage() {
   // 設定フォームの状態
   const [geminiApiKey, setGeminiApiKey] = useState(settings.geminiApiKey || "");
   const [spreadsheetId, setSpreadsheetId] = useState(settings.spreadsheetId || "");
+  const [appsScriptUrl, setAppsScriptUrl] = useState(settings.appsScriptUrl || "");
   const [isTestingApi, setIsTestingApi] = useState(false);
   const [apiTestResult, setApiTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [isUsersModalOpen, setIsUsersModalOpen] = useState(false);
@@ -91,6 +92,7 @@ export default function AdminPage() {
     // 設定が変更されたらフォームに反映
     setGeminiApiKey(settings.geminiApiKey || "");
     setSpreadsheetId(settings.spreadsheetId || "");
+    setAppsScriptUrl(settings.appsScriptUrl || "");
   }, [settings]);
 
   const handleLogin = (e: React.FormEvent) => {
@@ -121,6 +123,7 @@ export default function AdminPage() {
     updateSettings({
       geminiApiKey: geminiApiKey.trim() || undefined,
       spreadsheetId: spreadsheetId.trim() || undefined,
+      appsScriptUrl: appsScriptUrl.trim() || undefined,
     });
     setApiTestResult(null);
     setIsSettingsOpen(false);
@@ -600,6 +603,53 @@ export default function AdminPage() {
                 スプレッドシートを開く
               </a>
             )}
+          </div>
+
+          {/* Apps Script URL */}
+          <div>
+            <label className="flex items-center gap-2 text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-2">
+              <FileSpreadsheet className="w-4 h-4 text-green-500" />
+              Apps Script URL（スプレッドシート連携用）
+            </label>
+            <input
+              type="text"
+              value={appsScriptUrl}
+              onChange={(e) => setAppsScriptUrl(e.target.value)}
+              placeholder="https://script.google.com/macros/s/..."
+              className="w-full px-4 py-3 rounded-xl border border-zinc-200/60 dark:border-zinc-700/60 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-green-500/50 focus:border-green-300"
+            />
+            <p className="text-xs text-zinc-500 mt-1">
+              日記送信時に自動でスプレッドシートにデータを保存します。設定方法は下記を参照。
+            </p>
+            <details className="mt-2 text-xs text-zinc-600 dark:text-zinc-400">
+              <summary className="cursor-pointer font-medium text-green-600 hover:text-green-700">
+                設定方法を見る
+              </summary>
+              <div className="mt-2 p-3 bg-zinc-50 dark:bg-zinc-800/50 rounded-lg space-y-2">
+                <p>1. Googleスプレッドシートを作成</p>
+                <p>2. 拡張機能 → Apps Script を開く</p>
+                <p>3. 以下のコードを貼り付けてデプロイ：</p>
+                <pre className="bg-zinc-900 text-zinc-100 p-2 rounded text-[10px] overflow-x-auto">
+                  {`function doPost(e) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet();
+  var data = JSON.parse(e.postData.contents);
+  
+  // 名前でシートを検索または作成
+  var targetSheet = sheet.getSheetByName(data.name);
+  if (!targetSheet) {
+    targetSheet = sheet.insertSheet(data.name);
+    targetSheet.appendRow(["日時", "タイトル", "内容"]);
+  }
+  
+  targetSheet.appendRow([data.date, data.title, data.content]);
+  
+  return ContentService.createTextOutput("OK");
+}`}
+                </pre>
+                <p>4. デプロイ → 新しいデプロイ → ウェブアプリ</p>
+                <p>5. 「全員」に公開してURLをコピー</p>
+              </div>
+            </details>
           </div>
 
           {/* 保存ボタン */}

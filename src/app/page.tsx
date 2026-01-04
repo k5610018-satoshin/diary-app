@@ -149,9 +149,28 @@ export default function Home() {
         <DiaryForm
           user={user}
           geminiApiKey={settings.geminiApiKey}
-          onSubmit={(diary) => {
-            addDiary(diary);
+          onSubmit={async (diary) => {
+            const newDiary = addDiary(diary);
             setIsNewDiaryOpen(false);
+
+            // スプレッドシートに送信
+            if (settings.appsScriptUrl && newDiary) {
+              try {
+                await fetch("/api/spreadsheet/sync", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    scriptUrl: settings.appsScriptUrl,
+                    name: diary.userName,
+                    date: new Date().toLocaleString("ja-JP"),
+                    title: diary.title,
+                    content: diary.content,
+                  }),
+                });
+              } catch (e) {
+                console.error("Spreadsheet sync error:", e);
+              }
+            }
           }}
           onCancel={() => setIsNewDiaryOpen(false)}
         />
@@ -175,7 +194,7 @@ export default function Home() {
               const updated = diaries.find(d => d.id === selectedDiary.id);
               if (updated) setSelectedDiary(updated);
             }}
-            onTeacherComment={() => {}}
+            onTeacherComment={() => { }}
             onUpdate={(updates) => {
               const updated = updateDiary(selectedDiary.id, updates);
               if (updated) setSelectedDiary(updated);

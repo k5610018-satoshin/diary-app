@@ -3,10 +3,9 @@
 import { useState } from "react";
 import { Diary, User } from "@/types/diary";
 import { Button } from "@/components/ui/Button";
-import { AIFeedback } from "@/components/ai/AIFeedback";
 import { format } from "date-fns";
 import { ja } from "date-fns/locale";
-import { MessageCircle, Send, Plus, Trash2 } from "lucide-react";
+import { MessageCircle, Send, Plus, Trash2, Sparkles } from "lucide-react";
 
 interface DiaryDetailProps {
   diary: Diary;
@@ -32,50 +31,12 @@ export function DiaryDetail({
   const [additionContent, setAdditionContent] = useState("");
   const [commentContent, setCommentContent] = useState("");
   const [showAdditionForm, setShowAdditionForm] = useState(false);
-  const [isLoadingAI, setIsLoadingAI] = useState(false);
 
   const handleAddition = () => {
     if (!additionContent.trim()) return;
-    onAddition(additionContent.trim(), diary.aiFeedback?.question || "");
+    onAddition(additionContent.trim(), "");
     setAdditionContent("");
     setShowAdditionForm(false);
-
-    // 追記後に新しいAIフィードバックを生成
-    if (geminiApiKey) {
-      generateNewFeedback(additionContent.trim());
-    }
-  };
-
-  const generateNewFeedback = async (newContent: string) => {
-    setIsLoadingAI(true);
-    try {
-      // 追記専用のAPIを使用して、より適切なフィードバックを生成
-      const response = await fetch("/api/gemini/addition-feedback", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          originalContent: diary.content,
-          previousQuestion: diary.aiFeedback?.question || "",
-          additionContent: newContent,
-          apiKey: geminiApiKey,
-        }),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        onUpdate({
-          aiFeedback: {
-            feedback: data.feedback,
-            question: data.question,
-            generatedAt: new Date().toISOString(),
-          },
-        });
-      }
-    } catch (error) {
-      console.error("AI feedback error:", error);
-    } finally {
-      setIsLoadingAI(false);
-    }
   };
 
   const handleTeacherComment = () => {
@@ -176,69 +137,56 @@ export function DiaryDetail({
         </div>
       )}
 
-      {/* AIフィードバック */}
-      {diary.aiFeedback && (
-        <AIFeedback
-          feedback={diary.aiFeedback.feedback}
-          question={diary.aiFeedback.question}
-          isLoading={isLoadingAI}
-          onAnswerQuestion={
-            !isTeacher && diary.userId === user.id
-              ? () => setShowAdditionForm(true)
-              : undefined
-          }
-        />
-      )}
-
-      {/* 追記フォーム（児童用） */}
-      {showAdditionForm && !isTeacher && (
-        <div className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/30 dark:to-purple-800/20 rounded-xl p-5 space-y-4 border border-purple-200/60 dark:border-purple-700/60">
-          <p className="text-sm text-purple-700 dark:text-purple-300 font-semibold">
-            {diary.aiFeedback?.question}
-          </p>
-          <textarea
-            value={additionContent}
-            onChange={(e) => setAdditionContent(e.target.value)}
-            placeholder="答えを書いてね..."
-            rows={3}
-            className="w-full px-4 py-3 rounded-xl border border-purple-200/60 dark:border-purple-700/60 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 dark:placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-300 dark:focus:border-purple-600/50 resize-none text-sm transition-all shadow-sm"
-          />
-          <div className="flex justify-end gap-2">
+      {/* 追記ボタン・フォーム（児童用） */}
+      {!isTeacher && diary.userId === user.id && (
+        <>
+          {showAdditionForm ? (
+            <div className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/30 dark:to-purple-800/20 rounded-xl p-5 space-y-4 border border-purple-200/60 dark:border-purple-700/60">
+              <h4 className="text-sm font-semibold text-purple-700 dark:text-purple-300">
+                追記を書く
+              </h4>
+              <textarea
+                value={additionContent}
+                onChange={(e) => setAdditionContent(e.target.value)}
+                placeholder="追記したいことを書いてね..."
+                rows={3}
+                className="w-full px-4 py-3 rounded-xl border border-purple-200/60 dark:border-purple-700/60 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 dark:placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-300 dark:focus:border-purple-600/50 resize-none text-sm transition-all shadow-sm"
+              />
+              <div className="flex justify-end gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowAdditionForm(false)}
+                  className="rounded-xl"
+                >
+                  キャンセル
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handleAddition}
+                  disabled={!additionContent.trim()}
+                  className="bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 rounded-xl"
+                >
+                  <Send className="w-4 h-4 mr-1" />
+                  送る
+                </Button>
+              </div>
+            </div>
+          ) : (
             <Button
-              variant="ghost"
+              variant="secondary"
               size="sm"
-              onClick={() => setShowAdditionForm(false)}
-              className="rounded-xl"
+              onClick={() => setShowAdditionForm(true)}
+              className="flex items-center gap-2 rounded-xl"
             >
-              キャンセル
+              <Plus className="w-4 h-4" />
+              追記する
             </Button>
-            <Button
-              size="sm"
-              onClick={handleAddition}
-              disabled={!additionContent.trim()}
-              className="bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 rounded-xl"
-            >
-              <Send className="w-4 h-4 mr-1" />
-              送る
-            </Button>
-          </div>
-        </div>
+          )}
+        </>
       )}
 
-      {/* 追記ボタン（児童用） */}
-      {!isTeacher && diary.userId === user.id && !showAdditionForm && (
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={() => setShowAdditionForm(true)}
-          className="flex items-center gap-2 rounded-xl"
-        >
-          <Plus className="w-4 h-4" />
-          追記する
-        </Button>
-      )}
-
-      {/* 教師コメント一覧 */}
+      {/* 教師コメント一覧（AIフィードバックより先に表示） */}
       {diary.teacherComments.length > 0 && (
         <div className="space-y-3">
           <h4 className="text-sm font-semibold text-blue-600 dark:text-blue-400 flex items-center gap-2">
@@ -292,6 +240,21 @@ export function DiaryDetail({
               コメントを送る
             </Button>
           </div>
+        </div>
+      )}
+
+      {/* AIフィードバック（一番下に表示） */}
+      {diary.aiFeedback && (
+        <div className="bg-gradient-to-r from-zinc-50 to-zinc-100 dark:from-zinc-800/50 dark:to-zinc-700/30 rounded-xl p-4 border border-zinc-200 dark:border-zinc-700">
+          <div className="flex items-center gap-2 mb-2">
+            <Sparkles className="w-4 h-4 text-purple-500" />
+            <span className="text-sm font-semibold text-zinc-600 dark:text-zinc-400">
+              AIからのコメント
+            </span>
+          </div>
+          <p className="text-sm text-zinc-600 dark:text-zinc-400 leading-relaxed">
+            {diary.aiFeedback.feedback}
+          </p>
         </div>
       )}
     </div>

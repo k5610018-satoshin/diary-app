@@ -55,7 +55,22 @@ export function DiaryCard({ diary, onClick, showUserName = false }: DiaryCardPro
         {diary.content}
       </p>
 
-      {(hasAIFeedback || hasTeacherComment || diary.additions.length > 0 || hasImages) && (
+      {/* 先生からのコメント表示 */}
+      {hasTeacherComment && (
+        <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-200 dark:border-blue-800">
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <MessageCircle className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+            <span className="text-xs font-semibold text-blue-700 dark:text-blue-300">
+              {diary.teacherComments[diary.teacherComments.length - 1].teacherName}先生より
+            </span>
+          </div>
+          <p className="text-sm text-blue-800 dark:text-blue-200 line-clamp-2">
+            {diary.teacherComments[diary.teacherComments.length - 1].content}
+          </p>
+        </div>
+      )}
+
+      {(hasAIFeedback || diary.additions.length > 0 || hasImages) && (
         <div className="flex items-center gap-2.5 mt-4 pt-4 border-t border-zinc-200/60 dark:border-zinc-700/60 flex-wrap">
           {hasImages && (
             <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-2.5 py-1 rounded-lg">
@@ -67,12 +82,6 @@ export function DiaryCard({ diary, onClick, showUserName = false }: DiaryCardPro
             <div className="flex items-center gap-1.5 text-xs font-medium text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/20 px-2.5 py-1 rounded-lg">
               <Sparkles className="w-3.5 h-3.5" />
               <span>AIフィードバック</span>
-            </div>
-          )}
-          {hasTeacherComment && (
-            <div className="flex items-center gap-1.5 text-xs font-medium text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-2.5 py-1 rounded-lg">
-              <MessageCircle className="w-3.5 h-3.5" />
-              <span>先生コメント</span>
             </div>
           )}
           {diary.additions.length > 0 && (

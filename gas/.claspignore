@@ -1,0 +1,4 @@
+GAS_SETUP.md
+.clasp.json
+.claspignore
+deploy.sh

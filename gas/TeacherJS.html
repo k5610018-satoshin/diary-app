@@ -1,0 +1,572 @@
+<script>
+// ===== 状態管理 =====
+let allReflections = [];
+let allStudents = [];
+let currentCommentReflectionId = null;
+
+// ===== 初期化 =====
+document.addEventListener('DOMContentLoaded', function() {
+  const saved = sessionStorage.getItem('teacherLoggedIn');
+  if (saved === 'true') {
+    showMainApp();
+  }
+  // 先生名の復元
+  const savedName = localStorage.getItem('teacherName');
+  if (savedName) {
+    document.getElementById('commentTeacherName').value = savedName;
+  }
+});
+
+// ===== ログイン =====
+function handleTeacherLogin() {
+  const password = document.getElementById('teacherPassword').value;
+  if (!password) {
+    document.getElementById('loginError').textContent = 'パスワードを入力してください';
+    return;
+  }
+
+  google.script.run
+    .withSuccessHandler(function(result) {
+      if (result.success) {
+        sessionStorage.setItem('teacherLoggedIn', 'true');
+        showMainApp();
+      } else {
+        document.getElementById('loginError').textContent = result.message;
+      }
+    })
+    .withFailureHandler(function(err) {
+      document.getElementById('loginError').textContent = 'エラーが発生しました';
+    })
+    .teacherLogin(password);
+}
+
+function handleTeacherLogout() {
+  sessionStorage.removeItem('teacherLoggedIn');
+  location.reload();
+}
+
+// ===== メインアプリ表示 =====
+function showMainApp() {
+  document.getElementById('loginScreen').classList.add('hidden');
+  document.getElementById('mainApp').classList.remove('hidden');
+  loadDashboard();
+}
+
+// ===== タブ切り替え =====
+function switchTab(tab) {
+  document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
+  event.target.classList.add('active');
+
+  ['Dashboard', 'Reflections', 'Students', 'Settings'].forEach(name => {
+    document.getElementById('tab' + name).classList.add('hidden');
+  });
+
+  const tabId = 'tab' + tab.charAt(0).toUpperCase() + tab.slice(1);
+  document.getElementById(tabId).classList.remove('hidden');
+
+  switch(tab) {
+    case 'dashboard': loadDashboard(); break;
+    case 'reflections': loadAllReflections(); break;
+    case 'students': loadStudents(); break;
+    case 'settings': loadSettings(); break;
+  }
+}
+
+// ===== ダッシュボード =====
+function loadDashboard() {
+  google.script.run
+    .withSuccessHandler(function(data) {
+      allReflections = data || [];
+      updateStats();
+      renderRecentReflections();
+    })
+    .withFailureHandler(function(err) {
+      showToast('データの読み込みに失敗しました', 'error');
+    })
+    .getAllReflections(null);
+
+  google.script.run
+    .withSuccessHandler(function(students) {
+      allStudents = students || [];
+      document.getElementById('statStudents').textContent = allStudents.length;
+    })
+    .getAllStudents();
+}
+
+function updateStats() {
+  document.getElementById('statReflections').textContent = allReflections.length;
+
+  const commented = allReflections.filter(r => r.teacherComments && r.teacherComments.length > 0).length;
+  const uncommented = allReflections.length - commented;
+
+  document.getElementById('statCommented').textContent = commented;
+  document.getElementById('statUncommented').textContent = uncommented;
+}
+
+function renderRecentReflections() {
+  const uncommented = allReflections
+    .filter(r => !r.teacherComments || r.teacherComments.length === 0)
+    .slice(0, 10);
+
+  const container = document.getElementById('recentReflections');
+
+  if (uncommented.length === 0) {
+    container.innerHTML = '<div class="empty-state"><div class="empty-icon">✅</div><h3>すべてコメント済みです</h3></div>';
+    return;
+  }
+
+  container.innerHTML = uncommented.map(r => renderReflectionCard(r)).join('');
+}
+
+// ===== 振り返り一覧 =====
+function loadAllReflections() {
+  const container = document.getElementById('reflectionsList');
+  container.innerHTML = '<div class="loading"><div class="spinner"></div><span class="loading-text">読み込み中...</span></div>';
+
+  google.script.run
+    .withSuccessHandler(function(data) {
+      allReflections = data || [];
+      renderFilteredReflections();
+    })
+    .getAllReflections(null);
+}
+
+function applyFilters() {
+  renderFilteredReflections();
+}
+
+function renderFilteredReflections() {
+  const nameFilter = document.getElementById('filterStudent').value.trim().toLowerCase();
+  const dateFrom = document.getElementById('filterDateFrom').value;
+  const dateTo = document.getElementById('filterDateTo').value;
+  const commentFilter = document.getElementById('filterComment').value;
+
+  let filtered = allReflections;
+
+  if (nameFilter) {
+    filtered = filtered.filter(r => r.studentName.toLowerCase().includes(nameFilter));
+  }
+  if (dateFrom) {
+    filtered = filtered.filter(r => new Date(r.createdAt) >= new Date(dateFrom));
+  }
+  if (dateTo) {
+    filtered = filtered.filter(r => new Date(r.createdAt) <= new Date(dateTo + ' 23:59:59'));
+  }
+  if (commentFilter === 'yes') {
+    filtered = filtered.filter(r => r.teacherComments && r.teacherComments.length > 0);
+  } else if (commentFilter === 'no') {
+    filtered = filtered.filter(r => !r.teacherComments || r.teacherComments.length === 0);
+  }
+
+  const container = document.getElementById('reflectionsList');
+
+  if (filtered.length === 0) {
+    container.innerHTML = '<div class="empty-state"><h3>該当する振り返りがありません</h3></div>';
+    return;
+  }
+
+  container.innerHTML = `<p class="mb-1" style="color:var(--text-muted);font-size:0.85rem;">${filtered.length}件の振り返り</p>` +
+    filtered.map(r => renderReflectionCard(r)).join('');
+}
+
+function renderReflectionCard(r) {
+  const hasComment = r.teacherComments && r.teacherComments.length > 0;
+  const commentBadge = hasComment
+    ? `<span style="background:#E8F5E9;color:#2E7D32;padding:2px 8px;border-radius:8px;font-size:0.75rem;">✅ コメント済(${r.teacherComments.length})</span>`
+    : `<span style="background:#FFF3E0;color:#E65100;padding:2px 8px;border-radius:8px;font-size:0.75rem;">📋 未コメント</span>`;
+
+  return `
+    <div class="card reflection-card" style="margin-bottom:12px;">
+      <div class="card-header">
+        <div>
+          <span style="font-weight:700;color:var(--primary);margin-right:8px;">${escapeHtml(r.studentName)}</span>
+          <span class="card-title">${escapeHtml(r.title || '無題')}</span>
+        </div>
+        <span class="card-date">${formatDate(r.createdAt)}</span>
+      </div>
+      <div class="card-content reflection-preview" style="-webkit-line-clamp:2;">${escapeHtml(r.content)}</div>
+      <div class="reflection-meta">
+        ${commentBadge}
+        ${r.mood ? `<span class="mood-badge ${getMoodClass(r.mood)}">${r.mood}</span>` : ''}
+        ${r.category ? `<span class="category-badge">${r.category}</span>` : ''}
+        ${r.aiFeedback ? '<span class="has-ai">🤖 AI済</span>' : ''}
+      </div>
+      <div class="flex gap-1 mt-1">
+        <button class="btn btn-sm btn-primary" onclick="openCommentModal('${r.id}')">💬 コメント</button>
+        <button class="btn btn-sm btn-secondary" onclick="showTeacherDetail('${r.id}')">📖 詳細</button>
+        <button class="btn btn-sm btn-danger" onclick="confirmDeleteReflection('${r.id}')">🗑</button>
+      </div>
+    </div>
+  `;
+}
+
+// ===== 詳細表示 =====
+function showTeacherDetail(id) {
+  const r = allReflections.find(x => x.id === id);
+  if (!r) return;
+
+  document.getElementById('detailTitle').textContent = `${r.studentName} - ${r.title || '無題'}`;
+
+  let html = `
+    <div class="flex-between mb-2">
+      <div>
+        ${r.mood ? `<span class="mood-badge ${getMoodClass(r.mood)}">${r.mood}</span>` : ''}
+        ${r.category ? `<span class="category-badge">${r.category}</span>` : ''}
+      </div>
+      <span class="card-date">${formatDate(r.createdAt)}</span>
+    </div>
+
+    <div class="detail-section">
+      <h3>📝 振り返り内容</h3>
+      <div class="card" style="white-space:pre-wrap;line-height:1.9;">${escapeHtml(r.content)}</div>
+    </div>
+  `;
+
+  if (r.aiFeedback) {
+    html += `
+      <div class="detail-section">
+        <h3>🤖 AIフィードバック</h3>
+        <div class="ai-feedback-box">
+          <div class="feedback-text">${escapeHtml(r.aiFeedback)}</div>
+          ${r.aiQuestion ? `<div class="question-text">❓ ${escapeHtml(r.aiQuestion)}</div>` : ''}
+        </div>
+      </div>
+    `;
+  }
+
+  if (r.addition) {
+    html += `
+      <div class="detail-section">
+        <h3>📝 児童の追記</h3>
+        <div class="addition-box" style="white-space:pre-wrap;">${escapeHtml(r.addition)}</div>
+      </div>
+    `;
+  }
+
+  if (r.teacherComments && r.teacherComments.length > 0) {
+    html += `<div class="detail-section"><h3>💬 先生コメント</h3>`;
+    r.teacherComments.forEach(c => {
+      html += `
+        <div class="teacher-comment-box">
+          <div class="flex-between">
+            <div class="teacher-name">🧑‍🏫 ${escapeHtml(c.teacherName)}</div>
+            <button class="btn btn-sm btn-danger" style="padding:4px 8px;font-size:0.7rem;" onclick="deleteCommentAction('${c.id}')">削除</button>
+          </div>
+          <div class="comment-text">${escapeHtml(c.content)}</div>
+          <div class="comment-date">${formatDate(c.createdAt)}</div>
+        </div>
+      `;
+    });
+    html += `</div>`;
+  }
+
+  html += `
+    <div class="flex gap-1 mt-3" style="justify-content:flex-end;">
+      <button class="btn btn-sm btn-primary" onclick="closeDetailModal();openCommentModal('${r.id}')">💬 コメント追加</button>
+      <button class="btn btn-sm btn-secondary" onclick="closeDetailModal()">閉じる</button>
+    </div>
+  `;
+
+  document.getElementById('detailBody').innerHTML = html;
+  document.getElementById('detailModal').classList.add('active');
+}
+
+function closeDetailModal() {
+  document.getElementById('detailModal').classList.remove('active');
+}
+
+// ===== コメント =====
+function openCommentModal(reflectionId) {
+  currentCommentReflectionId = reflectionId;
+  const r = allReflections.find(x => x.id === reflectionId);
+  if (!r) return;
+
+  const preview = document.getElementById('commentReflectionPreview');
+  preview.innerHTML = `
+    <div class="card" style="background:var(--bg);">
+      <div style="font-weight:700;color:var(--primary);margin-bottom:4px;">${escapeHtml(r.studentName)}</div>
+      <div style="font-weight:600;margin-bottom:6px;">${escapeHtml(r.title || '無題')}</div>
+      <div style="font-size:0.9rem;color:var(--text-light);white-space:pre-wrap;max-height:100px;overflow-y:auto;">${escapeHtml(r.content)}</div>
+    </div>
+  `;
+
+  // 先生名復元
+  const savedName = localStorage.getItem('teacherName');
+  if (savedName) {
+    document.getElementById('commentTeacherName').value = savedName;
+  }
+  document.getElementById('commentContent').value = '';
+  document.getElementById('commentModal').classList.add('active');
+}
+
+function closeCommentModal() {
+  document.getElementById('commentModal').classList.remove('active');
+  currentCommentReflectionId = null;
+}
+
+function submitComment() {
+  const teacherName = document.getElementById('commentTeacherName').value.trim();
+  const content = document.getElementById('commentContent').value.trim();
+
+  if (!teacherName) {
+    showToast('先生のお名前を入力してください', 'error');
+    return;
+  }
+  if (!content) {
+    showToast('コメントを入力してください', 'error');
+    return;
+  }
+
+  // 先生名を保存
+  localStorage.setItem('teacherName', teacherName);
+
+  google.script.run
+    .withSuccessHandler(function(result) {
+      if (result.success) {
+        closeCommentModal();
+        showToast('コメントを送信しました', 'success');
+        // データを再読み込み
+        loadDashboard();
+        if (!document.getElementById('tabReflections').classList.contains('hidden')) {
+          loadAllReflections();
+        }
+      } else {
+        showToast('コメントの送信に失敗しました', 'error');
+      }
+    })
+    .withFailureHandler(function(err) {
+      showToast('エラーが発生しました', 'error');
+    })
+    .saveTeacherComment(currentCommentReflectionId, teacherName, content);
+}
+
+function deleteCommentAction(commentId) {
+  if (!confirm('このコメントを削除しますか？')) return;
+
+  google.script.run
+    .withSuccessHandler(function(result) {
+      if (result.success) {
+        showToast('コメントを削除しました', 'success');
+        closeDetailModal();
+        loadDashboard();
+        if (!document.getElementById('tabReflections').classList.contains('hidden')) {
+          loadAllReflections();
+        }
+      }
+    })
+    .deleteComment(commentId);
+}
+
+// ===== 振り返り削除 =====
+function confirmDeleteReflection(id) {
+  if (!confirm('この振り返りを削除しますか？関連するコメントも全て削除されます。')) return;
+
+  google.script.run
+    .withSuccessHandler(function(result) {
+      if (result.success) {
+        showToast('削除しました', 'success');
+        loadDashboard();
+        if (!document.getElementById('tabReflections').classList.contains('hidden')) {
+          loadAllReflections();
+        }
+      }
+    })
+    .deleteReflection(id);
+}
+
+// ===== 児童管理 =====
+function loadStudents() {
+  google.script.run
+    .withSuccessHandler(function(students) {
+      allStudents = students || [];
+      renderStudents();
+    })
+    .getAllStudents();
+
+  google.script.run
+    .withSuccessHandler(function(counts) {
+      window.reflectionCounts = counts || {};
+      renderStudents();
+    })
+    .getReflectionCountByStudent();
+}
+
+function renderStudents() {
+  const container = document.getElementById('studentsList');
+  const counts = window.reflectionCounts || {};
+
+  if (allStudents.length === 0) {
+    container.innerHTML = '<div class="empty-state"><h3>登録児童がいません</h3></div>';
+    return;
+  }
+
+  let html = `
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>名前</th>
+          <th>クラス</th>
+          <th>振り返り数</th>
+          <th>登録日</th>
+        </tr>
+      </thead>
+      <tbody>
+  `;
+
+  allStudents.forEach(s => {
+    html += `
+      <tr>
+        <td style="font-weight:600;">${escapeHtml(s.name)}</td>
+        <td>${escapeHtml(s.classId || '-')}</td>
+        <td style="text-align:center;">${counts[s.name] || 0}</td>
+        <td>${formatDate(s.registeredAt)}</td>
+      </tr>
+    `;
+  });
+
+  html += '</tbody></table>';
+  container.innerHTML = html;
+}
+
+// ===== 設定 =====
+function loadSettings() {
+  google.script.run
+    .withSuccessHandler(function(key) {
+      if (key) {
+        document.getElementById('settingApiKey').value = key;
+      }
+    })
+    .getSetting('OPENAI_API_KEY');
+
+  google.script.run
+    .withSuccessHandler(function(model) {
+      if (model) {
+        document.getElementById('settingModel').value = model;
+      }
+    })
+    .getSetting('AI_MODEL');
+}
+
+function saveSettings() {
+  const apiKey = document.getElementById('settingApiKey').value.trim();
+  const model = document.getElementById('settingModel').value;
+
+  google.script.run.setSetting('OPENAI_API_KEY', apiKey);
+  google.script.run
+    .withSuccessHandler(function() {
+      document.getElementById('settingStatus').textContent = '✅ 設定を保存しました';
+      document.getElementById('settingStatus').style.color = 'var(--success)';
+    })
+    .setSetting('AI_MODEL', model);
+}
+
+function testApiKey() {
+  document.getElementById('settingStatus').textContent = '🔍 テスト中...';
+  document.getElementById('settingStatus').style.color = 'var(--text-light)';
+
+  google.script.run
+    .withSuccessHandler(function(result) {
+      if (result.success) {
+        document.getElementById('settingStatus').textContent = '✅ ' + result.message;
+        document.getElementById('settingStatus').style.color = 'var(--success)';
+      } else {
+        document.getElementById('settingStatus').textContent = '❌ ' + result.error;
+        document.getElementById('settingStatus').style.color = 'var(--danger)';
+      }
+    })
+    .withFailureHandler(function(err) {
+      document.getElementById('settingStatus').textContent = '❌ テストに失敗しました';
+      document.getElementById('settingStatus').style.color = 'var(--danger)';
+    })
+    .testOpenAIKey();
+}
+
+function changePassword() {
+  const newPassword = document.getElementById('settingNewPassword').value.trim();
+  if (!newPassword) {
+    showToast('新しいパスワードを入力してください', 'error');
+    return;
+  }
+
+  google.script.run
+    .withSuccessHandler(function() {
+      showToast('パスワードを変更しました', 'success');
+      document.getElementById('settingNewPassword').value = '';
+    })
+    .setSetting('TEACHER_PASSWORD', newPassword);
+}
+
+// ===== CSV出力 =====
+function exportCSV() {
+  google.script.run
+    .withSuccessHandler(function(data) {
+      if (!data || data.length <= 1) {
+        showToast('エクスポートするデータがありません', 'error');
+        return;
+      }
+
+      // CSV文字列を生成
+      const bom = '\uFEFF';
+      const csv = data.map(row =>
+        row.map(cell => {
+          const str = String(cell || '');
+          if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+            return '"' + str.replace(/"/g, '""') + '"';
+          }
+          return str;
+        }).join(',')
+      ).join('\n');
+
+      // ダウンロード
+      const blob = new Blob([bom + csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'ふりかえり日記_' + new Date().toISOString().slice(0, 10) + '.csv';
+      a.click();
+      URL.revokeObjectURL(url);
+
+      showToast('CSVをダウンロードしました', 'success');
+    })
+    .withFailureHandler(function(err) {
+      showToast('エクスポートに失敗しました', 'error');
+    })
+    .getExportData();
+}
+
+// ===== ユーティリティ =====
+function escapeHtml(text) {
+  if (!text) return '';
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+function formatDate(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return String(dateStr);
+  return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+function getMoodClass(mood) {
+  const map = {
+    'たのしい': 'mood-happy',
+    'がんばった': 'mood-excited',
+    'ふつう': 'mood-normal',
+    'つかれた': 'mood-tired',
+    'かなしい': 'mood-sad',
+    'わくわく': 'mood-excited'
+  };
+  return map[mood] || 'mood-normal';
+}
+
+function showToast(message, type) {
+  const container = document.getElementById('toastContainer');
+  const toast = document.createElement('div');
+  toast.className = `toast ${type || 'info'}`;
+  toast.textContent = message;
+  container.appendChild(toast);
+  setTimeout(() => toast.remove(), 3000);
+}
+</script>

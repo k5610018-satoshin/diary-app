@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <?!= include('Styles') ?>
+</head>
+<body>
+
+<!-- ===== ログイン画面 ===== -->
+<div id="loginScreen" class="login-wrapper" style="background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);">
+  <div class="login-card">
+    <div class="app-icon">🧑‍🏫</div>
+    <h2>先生ページ</h2>
+    <p class="subtitle">ふりかえり日記 管理画面</p>
+
+    <div class="form-group">
+      <label>パスワード</label>
+      <input type="password" class="form-input" id="teacherPassword" placeholder="先生用パスワード" onkeydown="if(event.key==='Enter')handleTeacherLogin()">
+    </div>
+    <button class="btn btn-primary btn-block" onclick="handleTeacherLogin()">ログイン</button>
+    <p id="loginError" class="mt-2" style="color: var(--danger); font-size: 0.85rem;"></p>
+  </div>
+</div>
+
+<!-- ===== メインアプリ ===== -->
+<div id="mainApp" class="hidden">
+  <!-- ヘッダー -->
+  <header class="app-header" style="background: linear-gradient(135deg, #2c3e50, #3498db);">
+    <h1>🧑‍🏫 ふりかえり日記 先生ページ</h1>
+    <div class="user-info">
+      <button class="btn btn-sm" style="background:rgba(255,255,255,0.2);color:white;border:none;" onclick="handleTeacherLogout()">ログアウト</button>
+    </div>
+  </header>
+
+  <div class="container-wide">
+    <!-- タブナビゲーション -->
+    <div class="tab-bar">
+      <button class="tab-item active" onclick="switchTab('dashboard')">📊 ダッシュボード</button>
+      <button class="tab-item" onclick="switchTab('reflections')">📝 振り返り一覧</button>
+      <button class="tab-item" onclick="switchTab('students')">👦 児童管理</button>
+      <button class="tab-item" onclick="switchTab('settings')">⚙️ 設定</button>
+    </div>
+
+    <!-- ===== ダッシュボード ===== -->
+    <div id="tabDashboard">
+      <div class="stats-grid" id="statsGrid">
+        <div class="stat-card">
+          <div class="stat-icon">👦</div>
+          <div class="stat-value" id="statStudents">-</div>
+          <div class="stat-label">登録児童数</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">📝</div>
+          <div class="stat-value" id="statReflections">-</div>
+          <div class="stat-label">振り返り総数</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">💬</div>
+          <div class="stat-value" id="statCommented">-</div>
+          <div class="stat-label">コメント済み</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">📋</div>
+          <div class="stat-value" id="statUncommented">-</div>
+          <div class="stat-label">未コメント</div>
+        </div>
+      </div>
+
+      <h3 class="mb-2">📋 最新の振り返り（未コメント）</h3>
+      <div id="recentReflections">
+        <div class="loading"><div class="spinner"></div><span class="loading-text">読み込み中...</span></div>
+      </div>
+    </div>
+
+    <!-- ===== 振り返り一覧 ===== -->
+    <div id="tabReflections" class="hidden">
+      <div class="filter-bar">
+        <input type="text" class="form-input" id="filterStudent" placeholder="児童名で検索" oninput="applyFilters()">
+        <input type="date" class="form-input" id="filterDateFrom" onchange="applyFilters()" style="max-width:180px;">
+        <input type="date" class="form-input" id="filterDateTo" onchange="applyFilters()" style="max-width:180px;">
+        <select class="form-input" id="filterComment" onchange="applyFilters()" style="max-width:180px;">
+          <option value="">全て</option>
+          <option value="no">未コメント</option>
+          <option value="yes">コメント済み</option>
+        </select>
+        <button class="btn btn-sm btn-secondary" onclick="exportCSV()">📥 CSV出力</button>
+      </div>
+
+      <div id="reflectionsList">
+        <div class="loading"><div class="spinner"></div></div>
+      </div>
+    </div>
+
+    <!-- ===== 児童管理 ===== -->
+    <div id="tabStudents" class="hidden">
+      <h3 class="mb-2">👦 登録児童一覧</h3>
+      <div id="studentsList">
+        <div class="loading"><div class="spinner"></div></div>
+      </div>
+    </div>
+
+    <!-- ===== 設定 ===== -->
+    <div id="tabSettings" class="hidden">
+      <div class="card mb-2">
+        <h3 class="mb-2">🔑 OpenAI API設定</h3>
+        <div class="form-group">
+          <label>APIキー</label>
+          <input type="password" class="form-input" id="settingApiKey" placeholder="sk-...">
+        </div>
+        <div class="form-group">
+          <label>AIモデル</label>
+          <select class="form-input" id="settingModel">
+            <option value="gpt-4o-mini">GPT-4o Mini（推奨・低コスト）</option>
+            <option value="gpt-4o">GPT-4o（高精度）</option>
+            <option value="gpt-3.5-turbo">GPT-3.5 Turbo（低コスト）</option>
+          </select>
+        </div>
+        <div class="flex gap-1">
+          <button class="btn btn-primary btn-sm" onclick="saveSettings()">💾 保存</button>
+          <button class="btn btn-secondary btn-sm" onclick="testApiKey()">🔍 接続テスト</button>
+        </div>
+        <p id="settingStatus" class="mt-1" style="font-size:0.85rem;"></p>
+      </div>
+
+      <div class="card mb-2">
+        <h3 class="mb-2">🔒 先生パスワード変更</h3>
+        <div class="form-group">
+          <label>新しいパスワード</label>
+          <input type="password" class="form-input" id="settingNewPassword" placeholder="新しいパスワード">
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="changePassword()">🔑 パスワード変更</button>
+      </div>
+
+      <div class="card">
+        <h3 class="mb-2">📊 データ管理</h3>
+        <div class="flex gap-1 flex-wrap">
+          <button class="btn btn-secondary btn-sm" onclick="exportCSV()">📥 全データCSV出力</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== コメントモーダル ===== -->
+<div class="modal-overlay" id="commentModal">
+  <div class="modal" style="max-width:600px;">
+    <div class="modal-header">
+      <h2>💬 コメントを書く</h2>
+      <button class="modal-close" onclick="closeCommentModal()">✕</button>
+    </div>
+
+    <div id="commentReflectionPreview" class="mb-2"></div>
+
+    <div class="form-group">
+      <label>先生のお名前</label>
+      <input type="text" class="form-input" id="commentTeacherName" placeholder="例：田中先生" value="">
+    </div>
+    <div class="form-group">
+      <label>コメント</label>
+      <textarea class="form-input" id="commentContent" placeholder="児童へのコメントを入力してください" rows="4"></textarea>
+    </div>
+
+    <div class="flex gap-1" style="justify-content:flex-end;">
+      <button class="btn btn-secondary" onclick="closeCommentModal()">キャンセル</button>
+      <button class="btn btn-primary" onclick="submitComment()">💬 コメント送信</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 振り返り詳細モーダル ===== -->
+<div class="modal-overlay" id="detailModal">
+  <div class="modal" style="max-width:700px;">
+    <div class="modal-header">
+      <h2 id="detailTitle"></h2>
+      <button class="modal-close" onclick="closeDetailModal()">✕</button>
+    </div>
+    <div id="detailBody"></div>
+  </div>
+</div>
+
+<!-- トースト通知 -->
+<div class="toast-container" id="toastContainer"></div>
+
+<?!= include('TeacherJS') ?>
+
+</body>
+</html>

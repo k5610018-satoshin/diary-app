@@ -1,0 +1,636 @@
+<script>
+// ===== 状態管理 =====
+let currentUser = null;
+let reflections = [];
+let selectedMood = '';
+let currentReflectionId = null;
+let calendarDate = new Date();
+
+// 音声録音
+let mediaRecorder = null;
+let audioChunks = [];
+let isRecording = false;
+let activeVoiceTarget = null;
+
+// ===== 初期化 =====
+document.addEventListener('DOMContentLoaded', function() {
+  // セッション復元
+  const saved = sessionStorage.getItem('diaryUser');
+  if (saved) {
+    currentUser = JSON.parse(saved);
+    showMainApp();
+  }
+});
+
+// ===== ログイン/登録 =====
+function showLoginTab(tab) {
+  document.querySelectorAll('.login-tab').forEach(t => t.classList.remove('active'));
+  event.target.classList.add('active');
+  document.getElementById('loginForm').classList.toggle('hidden', tab !== 'login');
+  document.getElementById('registerForm').classList.toggle('hidden', tab !== 'register');
+  document.getElementById('loginError').textContent = '';
+}
+
+function handleLogin() {
+  const name = document.getElementById('loginName').value.trim();
+  const password = document.getElementById('loginPassword').value;
+
+  if (!name || !password) {
+    document.getElementById('loginError').textContent = 'なまえとパスワードを入れてね';
+    return;
+  }
+
+  showLoadingToast('ログイン中...');
+  google.script.run
+    .withSuccessHandler(function(result) {
+      if (result.success) {
+        currentUser = result.user;
+        sessionStorage.setItem('diaryUser', JSON.stringify(currentUser));
+        showMainApp();
+        showToast('ログインしました！', 'success');
+      } else {
+        document.getElementById('loginError').textContent = result.message;
+      }
+    })
+    .withFailureHandler(function(err) {
+      document.getElementById('loginError').textContent = 'エラーが発生しました';
+    })
+    .studentLogin(name, password);
+}
+
+function handleRegister() {
+  const name = document.getElementById('regName').value.trim();
+  const password = document.getElementById('regPassword').value;
+  const classId = document.getElementById('regClass').value.trim();
+
+  if (!name || !password) {
+    document.getElementById('loginError').textContent = 'なまえとパスワードを入れてね';
+    return;
+  }
+
+  showLoadingToast('登録中...');
+  google.script.run
+    .withSuccessHandler(function(result) {
+      if (result.success) {
+        currentUser = result.user;
+        sessionStorage.setItem('diaryUser', JSON.stringify(currentUser));
+        showMainApp();
+        showToast('登録できました！ようこそ！', 'success');
+      } else {
+        document.getElementById('loginError').textContent = result.message;
+      }
+    })
+    .withFailureHandler(function(err) {
+      document.getElementById('loginError').textContent = 'エラーが発生しました';
+    })
+    .registerStudent(name, password, classId);
+}
+
+function handleLogout() {
+  currentUser = null;
+  sessionStorage.removeItem('diaryUser');
+  document.getElementById('loginScreen').classList.remove('hidden');
+  document.getElementById('mainApp').classList.add('hidden');
+  // フォームリセット
+  document.getElementById('loginName').value = '';
+  document.getElementById('loginPassword').value = '';
+}
+
+// ===== メインアプリ表示 =====
+function showMainApp() {
+  document.getElementById('loginScreen').classList.add('hidden');
+  document.getElementById('mainApp').classList.remove('hidden');
+  document.getElementById('headerUserName').textContent = currentUser.name + 'さん';
+  loadReflections();
+}
+
+// ===== データ読み込み =====
+function loadReflections() {
+  document.getElementById('reflectionsList').innerHTML = '<div class="loading"><div class="spinner"></div><span class="loading-text">読み込み中...</span></div>';
+
+  google.script.run
+    .withSuccessHandler(function(data) {
+      reflections = data || [];
+      renderReflections();
+    })
+    .withFailureHandler(function(err) {
+      showToast('データの読み込みに失敗しました', 'error');
+    })
+    .getReflectionsByStudent(currentUser.id);
+}
+
+// ===== リスト表示 =====
+function renderReflections() {
+  const container = document.getElementById('reflectionsList');
+  const empty = document.getElementById('emptyState');
+
+  if (reflections.length === 0) {
+    container.innerHTML = '';
+    empty.classList.remove('hidden');
+    return;
+  }
+
+  empty.classList.add('hidden');
+
+  container.innerHTML = reflections.map(r => {
+    const date = formatDate(r.createdAt);
+    const moodClass = getMoodClass(r.mood);
+    const hasComment = r.teacherComments && r.teacherComments.length > 0;
+    const hasAI = r.aiFeedback && r.aiFeedback.length > 0;
+    const commentCount = r.teacherComments ? r.teacherComments.length : 0;
+
+    return `
+      <div class="card reflection-card" onclick="showDetail('${r.id}')">
+        <div class="card-header">
+          <div>
+            <span class="card-title">${escapeHtml(r.title || '無題')}</span>
+            ${r.mood ? `<span class="mood-badge ${moodClass}">${r.mood}</span>` : ''}
+            ${r.category ? `<span class="category-badge">${r.category}</span>` : ''}
+          </div>
+          <span class="card-date">${date}</span>
+        </div>
+        <div class="card-content reflection-preview">${escapeHtml(r.content)}</div>
+        <div class="reflection-meta">
+          ${hasAI ? '<span class="has-ai">🤖 AIフィードバックあり</span>' : ''}
+          ${hasComment ? `<span class="has-comment">💬 先生のコメント ${commentCount}件</span>` : ''}
+          ${r.addition ? '<span>📝 ついきあり</span>' : ''}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// ===== カレンダー表示 =====
+function switchView(view) {
+  document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
+  event.target.classList.add('active');
+
+  document.getElementById('listView').classList.toggle('hidden', view !== 'list');
+  document.getElementById('calendarView').classList.toggle('hidden', view !== 'calendar');
+
+  if (view === 'calendar') {
+    renderCalendar();
+  }
+}
+
+function changeMonth(delta) {
+  calendarDate.setMonth(calendarDate.getMonth() + delta);
+  renderCalendar();
+}
+
+function renderCalendar() {
+  const year = calendarDate.getFullYear();
+  const month = calendarDate.getMonth();
+
+  document.getElementById('calendarTitle').textContent = `${year}年${month + 1}月`;
+
+  const firstDay = new Date(year, month, 1);
+  const lastDay = new Date(year, month + 1, 0);
+  const startDow = firstDay.getDay();
+  const daysInMonth = lastDay.getDate();
+  const today = new Date();
+
+  // 振り返りがある日を集める
+  const entryDays = {};
+  reflections.forEach(r => {
+    const d = new Date(r.createdAt);
+    if (d.getFullYear() === year && d.getMonth() === month) {
+      const day = d.getDate();
+      if (!entryDays[day]) entryDays[day] = [];
+      entryDays[day].push(r);
+    }
+  });
+
+  let html = '';
+  const dow = ['日', '月', '火', '水', '木', '金', '土'];
+  dow.forEach(d => {
+    html += `<div class="calendar-header">${d}</div>`;
+  });
+
+  // 空白日
+  for (let i = 0; i < startDow; i++) {
+    html += '<div class="calendar-day other-month"></div>';
+  }
+
+  // 日付
+  for (let d = 1; d <= daysInMonth; d++) {
+    const isToday = today.getFullYear() === year && today.getMonth() === month && today.getDate() === d;
+    const hasEntry = entryDays[d];
+    const classes = ['calendar-day'];
+    if (isToday) classes.push('today');
+    if (hasEntry) classes.push('has-entry');
+
+    html += `<div class="${classes.join(' ')}" onclick="showCalendarDay(${d})">${d}</div>`;
+  }
+
+  document.getElementById('calendarGrid').innerHTML = html;
+  document.getElementById('calendarDayEntries').innerHTML = '';
+}
+
+function showCalendarDay(day) {
+  const year = calendarDate.getFullYear();
+  const month = calendarDate.getMonth();
+  const dayReflections = reflections.filter(r => {
+    const d = new Date(r.createdAt);
+    return d.getFullYear() === year && d.getMonth() === month && d.getDate() === day;
+  });
+
+  const container = document.getElementById('calendarDayEntries');
+  if (dayReflections.length === 0) {
+    container.innerHTML = `<p class="text-center mt-2" style="color:var(--text-muted);">${month + 1}月${day}日のふりかえりはありません</p>`;
+    return;
+  }
+
+  container.innerHTML = `<h4 class="mt-2 mb-1">${month + 1}月${day}日のふりかえり</h4>` +
+    dayReflections.map(r => `
+      <div class="card reflection-card" onclick="showDetail('${r.id}')" style="margin-bottom:8px;">
+        <div class="card-header">
+          <span class="card-title">${escapeHtml(r.title || '無題')}</span>
+        </div>
+        <div class="card-content reflection-preview">${escapeHtml(r.content)}</div>
+      </div>
+    `).join('');
+}
+
+// ===== 振り返り詳細表示 =====
+function showDetail(id) {
+  const r = reflections.find(x => x.id === id);
+  if (!r) return;
+
+  currentReflectionId = id;
+  document.getElementById('detailTitle').textContent = r.title || '無題';
+
+  let html = `
+    <div class="flex-between mb-2">
+      <div>
+        ${r.mood ? `<span class="mood-badge ${getMoodClass(r.mood)}">${r.mood}</span>` : ''}
+        ${r.category ? `<span class="category-badge">${r.category}</span>` : ''}
+      </div>
+      <span class="card-date">${formatDate(r.createdAt)}</span>
+    </div>
+
+    <div class="detail-section">
+      <h3>📝 ふりかえり</h3>
+      <div class="card-content" style="white-space:pre-wrap;line-height:1.9;">${escapeHtml(r.content)}</div>
+    </div>
+  `;
+
+  // AIフィードバック
+  if (r.aiFeedback) {
+    html += `
+      <div class="detail-section">
+        <h3>🤖 AIからのメッセージ</h3>
+        <div class="ai-feedback-box">
+          <div class="feedback-text">${escapeHtml(r.aiFeedback)}</div>
+          ${r.aiQuestion ? `
+            <div class="question-text">❓ ${escapeHtml(r.aiQuestion)}</div>
+            ${!r.addition ? `<button class="btn btn-sm btn-primary mt-1" onclick="showAdditionModal('${r.id}', '${escapeHtml(r.aiQuestion).replace(/'/g, "\\'")}')">こたえる</button>` : ''}
+          ` : ''}
+        </div>
+      </div>
+    `;
+  }
+
+  // 追記
+  if (r.addition) {
+    html += `
+      <div class="detail-section">
+        <h3>📝 ついき</h3>
+        <div class="addition-box">
+          <div style="white-space:pre-wrap;">${escapeHtml(r.addition)}</div>
+        </div>
+      </div>
+    `;
+  }
+
+  // 先生コメント
+  if (r.teacherComments && r.teacherComments.length > 0) {
+    html += `<div class="detail-section"><h3>💬 先生からのコメント</h3>`;
+    r.teacherComments.forEach(c => {
+      html += `
+        <div class="teacher-comment-box">
+          <div class="teacher-name">🧑‍🏫 ${escapeHtml(c.teacherName)} 先生</div>
+          <div class="comment-text">${escapeHtml(c.content)}</div>
+          <div class="comment-date">${formatDate(c.createdAt)}</div>
+        </div>
+      `;
+    });
+    html += `</div>`;
+  }
+
+  // アクションボタン
+  html += `
+    <div class="flex gap-1 mt-3" style="justify-content:flex-end;">
+      <button class="btn btn-sm btn-danger" onclick="confirmDelete('${r.id}')">🗑 けす</button>
+      <button class="btn btn-sm btn-secondary" onclick="closeDetailModal()">とじる</button>
+    </div>
+  `;
+
+  document.getElementById('detailBody').innerHTML = html;
+  document.getElementById('detailModal').classList.add('active');
+}
+
+function closeDetailModal() {
+  document.getElementById('detailModal').classList.remove('active');
+  currentReflectionId = null;
+}
+
+// ===== 振り返り作成 =====
+function showWriteModal() {
+  document.getElementById('writeTitle').value = '';
+  document.getElementById('writeContent').value = '';
+  document.getElementById('writeCategory').value = '';
+  document.getElementById('writeMood').value = '';
+  selectedMood = '';
+  document.querySelectorAll('.mood-select').forEach(b => {
+    b.style.background = '';
+    b.style.color = '';
+  });
+  document.getElementById('writeModal').classList.add('active');
+}
+
+function closeWriteModal() {
+  document.getElementById('writeModal').classList.remove('active');
+  stopRecording();
+}
+
+function selectMood(btn) {
+  document.querySelectorAll('.mood-select').forEach(b => {
+    b.style.background = '';
+    b.style.color = '';
+    b.style.border = '2px solid var(--border)';
+  });
+  btn.style.background = 'var(--primary)';
+  btn.style.color = 'white';
+  btn.style.border = '2px solid var(--primary)';
+  selectedMood = btn.dataset.mood;
+  document.getElementById('writeMood').value = selectedMood;
+}
+
+function saveReflection() {
+  const title = document.getElementById('writeTitle').value.trim();
+  const content = document.getElementById('writeContent').value.trim();
+  const category = document.getElementById('writeCategory').value;
+  const mood = selectedMood;
+
+  if (!content) {
+    showToast('ないようを書いてね', 'error');
+    return;
+  }
+
+  const saveBtn = document.getElementById('saveBtn');
+  saveBtn.disabled = true;
+  saveBtn.textContent = '保存中...';
+
+  const data = {
+    studentId: currentUser.id,
+    studentName: currentUser.name,
+    title: title || formatDateShort(new Date()) + 'のふりかえり',
+    content: content,
+    category: category,
+    mood: mood
+  };
+
+  google.script.run
+    .withSuccessHandler(function(result) {
+      if (result.success) {
+        // AIフィードバック生成
+        generateAIFeedback(result.id, data.title, data.content, category, mood);
+        closeWriteModal();
+        showToast('ふりかえりを保存しました！', 'success');
+        loadReflections();
+      } else {
+        showToast('保存に失敗しました', 'error');
+      }
+      saveBtn.disabled = false;
+      saveBtn.textContent = '💾 ほぞんする';
+    })
+    .withFailureHandler(function(err) {
+      showToast('エラーが発生しました', 'error');
+      saveBtn.disabled = false;
+      saveBtn.textContent = '💾 ほぞんする';
+    })
+    .saveReflection(data);
+}
+
+// ===== AIフィードバック =====
+function generateAIFeedback(reflectionId, title, content, category, mood) {
+  google.script.run
+    .withSuccessHandler(function(result) {
+      if (result.success) {
+        // フィードバックを振り返りに保存
+        google.script.run
+          .withSuccessHandler(function() { loadReflections(); })
+          .saveReflection({
+            id: reflectionId,
+            aiFeedback: result.feedback,
+            aiQuestion: result.question
+          });
+        showToast('AIからメッセージがとどきました！', 'info');
+      }
+    })
+    .withFailureHandler(function(err) {
+      // AIフィードバック失敗は静かに処理
+      console.log('AI feedback error:', err);
+    })
+    .generateFeedback(currentUser.name, title, content, category, mood);
+}
+
+// ===== 追記 =====
+function showAdditionModal(reflectionId, question) {
+  closeDetailModal();
+  currentReflectionId = reflectionId;
+  document.getElementById('additionQuestion').textContent = question;
+  document.getElementById('additionContent').value = '';
+  document.getElementById('additionModal').classList.add('active');
+}
+
+function closeAdditionModal() {
+  document.getElementById('additionModal').classList.remove('active');
+  stopRecording();
+}
+
+function saveAddition() {
+  const content = document.getElementById('additionContent').value.trim();
+  if (!content) {
+    showToast('こたえを書いてね', 'error');
+    return;
+  }
+
+  google.script.run
+    .withSuccessHandler(function(result) {
+      if (result.success) {
+        closeAdditionModal();
+        showToast('ついきを保存しました！', 'success');
+        loadReflections();
+
+        // 追記に対するAIフィードバック（任意）
+        const r = reflections.find(x => x.id === currentReflectionId);
+        if (r) {
+          google.script.run
+            .withSuccessHandler(function(fbResult) {
+              if (fbResult.success) {
+                showToast('AIからお返事がきました！', 'info');
+              }
+            })
+            .generateAdditionFeedback(currentUser.name, r.content, content, r.aiQuestion);
+        }
+      }
+    })
+    .withFailureHandler(function(err) {
+      showToast('保存に失敗しました', 'error');
+    })
+    .saveReflection({
+      id: currentReflectionId,
+      addition: content
+    });
+}
+
+// ===== 削除 =====
+function confirmDelete(id) {
+  if (confirm('ほんとうにけしますか？')) {
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (result.success) {
+          closeDetailModal();
+          showToast('けしました', 'success');
+          loadReflections();
+        }
+      })
+      .deleteReflection(id);
+  }
+}
+
+// ===== 音声入力（Whisper API） =====
+async function toggleVoiceRecording(targetId) {
+  if (isRecording) {
+    stopRecording();
+    return;
+  }
+
+  activeVoiceTarget = targetId;
+  const btnId = targetId === 'writeContent' ? 'voiceBtn' : 'voiceBtnAddition';
+  const statusId = targetId === 'writeContent' ? 'voiceStatus' : 'voiceStatusAddition';
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+    audioChunks = [];
+
+    mediaRecorder.ondataavailable = function(e) {
+      if (e.data.size > 0) {
+        audioChunks.push(e.data);
+      }
+    };
+
+    mediaRecorder.onstop = function() {
+      // ストリーム停止
+      stream.getTracks().forEach(track => track.stop());
+
+      const btn = document.getElementById(btnId);
+      const status = document.getElementById(statusId);
+      btn.className = 'voice-btn processing';
+      btn.textContent = '⏳';
+      status.textContent = '音声を認識中...';
+      status.className = 'voice-status';
+
+      const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+
+      // Base64に変換してサーバーに送信
+      const reader = new FileReader();
+      reader.onloadend = function() {
+        const base64 = reader.result.split(',')[1];
+
+        google.script.run
+          .withSuccessHandler(function(result) {
+            btn.className = 'voice-btn idle';
+            btn.textContent = '🎤';
+
+            if (result.success && result.text) {
+              const textarea = document.getElementById(targetId);
+              const current = textarea.value;
+              textarea.value = current + (current ? '\n' : '') + result.text;
+              status.textContent = '✅ 音声を入力しました！';
+              showToast('音声を文字にしました！', 'success');
+            } else {
+              status.textContent = result.error || '認識できませんでした';
+              showToast(result.error || '音声認識に失敗しました', 'error');
+            }
+          })
+          .withFailureHandler(function(err) {
+            btn.className = 'voice-btn idle';
+            btn.textContent = '🎤';
+            status.textContent = 'エラーが発生しました';
+            showToast('音声認識でエラーが発生しました', 'error');
+          })
+          .transcribeAudio(base64, 'audio/webm');
+      };
+      reader.readAsDataURL(audioBlob);
+    };
+
+    mediaRecorder.start();
+    isRecording = true;
+
+    const btn = document.getElementById(btnId);
+    const status = document.getElementById(statusId);
+    btn.className = 'voice-btn recording';
+    btn.textContent = '⏹';
+    status.textContent = '🔴 録音中... もう一度押すと止まるよ';
+    status.className = 'voice-status recording';
+
+  } catch (err) {
+    console.error('Voice recording error:', err);
+    showToast('マイクが使えません。ブラウザの設定を確認してね', 'error');
+  }
+}
+
+function stopRecording() {
+  if (mediaRecorder && isRecording) {
+    mediaRecorder.stop();
+    isRecording = false;
+  }
+}
+
+// ===== ユーティリティ =====
+function escapeHtml(text) {
+  if (!text) return '';
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+function formatDate(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+function formatDateShort(d) {
+  return `${d.getMonth() + 1}月${d.getDate()}日`;
+}
+
+function getMoodClass(mood) {
+  const map = {
+    'たのしい': 'mood-happy',
+    'がんばった': 'mood-excited',
+    'ふつう': 'mood-normal',
+    'つかれた': 'mood-tired',
+    'かなしい': 'mood-sad',
+    'わくわく': 'mood-excited'
+  };
+  return map[mood] || 'mood-normal';
+}
+
+function showToast(message, type) {
+  const container = document.getElementById('toastContainer');
+  const toast = document.createElement('div');
+  toast.className = `toast ${type || 'info'}`;
+  toast.textContent = message;
+  container.appendChild(toast);
+  setTimeout(() => toast.remove(), 3000);
+}
+
+function showLoadingToast(message) {
+  showToast(message, 'info');
+}
+</script>

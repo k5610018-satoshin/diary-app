@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <?!= include('Styles') ?>
+</head>
+<body>
+
+<!-- ===== ログイン画面 ===== -->
+<div id="loginScreen" class="login-wrapper">
+  <div class="login-card">
+    <div class="app-icon">📓</div>
+    <h2>ふりかえり日記</h2>
+    <p class="subtitle">きょうの学びをふりかえろう</p>
+
+    <div class="login-tabs">
+      <button class="login-tab active" onclick="showLoginTab('login')">ログイン</button>
+      <button class="login-tab" onclick="showLoginTab('register')">はじめて使う</button>
+    </div>
+
+    <div id="loginForm">
+      <div class="form-group">
+        <label>なまえ</label>
+        <input type="text" class="form-input" id="loginName" placeholder="なまえを入れてね">
+      </div>
+      <div class="form-group">
+        <label>パスワード</label>
+        <input type="password" class="form-input" id="loginPassword" placeholder="パスワード">
+      </div>
+      <button class="btn btn-primary btn-block" onclick="handleLogin()">ログイン</button>
+    </div>
+
+    <div id="registerForm" class="hidden">
+      <div class="form-group">
+        <label>なまえ</label>
+        <input type="text" class="form-input" id="regName" placeholder="なまえを入れてね">
+      </div>
+      <div class="form-group">
+        <label>パスワード</label>
+        <input type="password" class="form-input" id="regPassword" placeholder="パスワードをきめてね">
+      </div>
+      <div class="form-group">
+        <label>クラス</label>
+        <input type="text" class="form-input" id="regClass" placeholder="れい：3年1組">
+      </div>
+      <button class="btn btn-primary btn-block" onclick="handleRegister()">とうろく</button>
+    </div>
+
+    <p id="loginError" class="mt-2" style="color: var(--danger); font-size: 0.85rem;"></p>
+  </div>
+</div>
+
+<!-- ===== メインアプリ ===== -->
+<div id="mainApp" class="hidden">
+  <!-- ヘッダー -->
+  <header class="app-header">
+    <h1>📓 ふりかえり日記</h1>
+    <div class="user-info">
+      <span class="user-name" id="headerUserName"></span>
+      <button class="btn btn-sm" style="background:rgba(255,255,255,0.2);color:white;border:none;" onclick="handleLogout()">ログアウト</button>
+    </div>
+  </header>
+
+  <!-- ビュー切り替え -->
+  <div class="container">
+    <div class="tab-bar" id="viewTabs">
+      <button class="tab-item active" onclick="switchView('list')">📋 いちらん</button>
+      <button class="tab-item" onclick="switchView('calendar')">📅 カレンダー</button>
+    </div>
+
+    <!-- リストビュー -->
+    <div id="listView">
+      <div id="reflectionsList"></div>
+    </div>
+
+    <!-- カレンダービュー -->
+    <div id="calendarView" class="hidden">
+      <div class="flex-between mb-2">
+        <button class="btn btn-sm btn-secondary" onclick="changeMonth(-1)">◀ 前月</button>
+        <h3 id="calendarTitle" style="font-size:1.1rem;"></h3>
+        <button class="btn btn-sm btn-secondary" onclick="changeMonth(1)">次月 ▶</button>
+      </div>
+      <div class="calendar-grid" id="calendarGrid"></div>
+      <div id="calendarDayEntries"></div>
+    </div>
+
+    <!-- 空の状態 -->
+    <div id="emptyState" class="empty-state hidden">
+      <div class="empty-icon">📝</div>
+      <h3>まだふりかえりがありません</h3>
+      <p>下の ＋ ボタンからふりかえりを書いてみよう！</p>
+    </div>
+  </div>
+
+  <!-- 新規作成ボタン -->
+  <button class="fab" onclick="showWriteModal()" title="あたらしいふりかえりを書く">✏️</button>
+</div>
+
+<!-- ===== 書き込みモーダル ===== -->
+<div class="modal-overlay" id="writeModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>✏️ ふりかえりを書こう</h2>
+      <button class="modal-close" onclick="closeWriteModal()">✕</button>
+    </div>
+
+    <div class="form-group">
+      <label>タイトル</label>
+      <input type="text" class="form-input" id="writeTitle" placeholder="きょうのタイトルをきめよう">
+    </div>
+
+    <div class="form-group">
+      <label>カテゴリ</label>
+      <select class="form-input" id="writeCategory">
+        <option value="">えらんでね</option>
+        <option value="授業">📚 じゅぎょう</option>
+        <option value="給食">🍱 きゅうしょく</option>
+        <option value="休み時間">⚽ やすみじかん</option>
+        <option value="行事">🎉 ぎょうじ</option>
+        <option value="そうじ">🧹 そうじ</option>
+        <option value="その他">✨ そのほか</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label>きょうの気分</label>
+      <div class="flex gap-1" style="flex-wrap:wrap;">
+        <button class="btn btn-sm mood-select" data-mood="たのしい" onclick="selectMood(this)">😊 たのしい</button>
+        <button class="btn btn-sm mood-select" data-mood="がんばった" onclick="selectMood(this)">💪 がんばった</button>
+        <button class="btn btn-sm mood-select" data-mood="ふつう" onclick="selectMood(this)">😐 ふつう</button>
+        <button class="btn btn-sm mood-select" data-mood="つかれた" onclick="selectMood(this)">😴 つかれた</button>
+        <button class="btn btn-sm mood-select" data-mood="かなしい" onclick="selectMood(this)">😢 かなしい</button>
+        <button class="btn btn-sm mood-select" data-mood="わくわく" onclick="selectMood(this)">🤩 わくわく</button>
+      </div>
+      <input type="hidden" id="writeMood" value="">
+    </div>
+
+    <div class="form-group">
+      <label>ないよう</label>
+      <!-- 音声入力エリア -->
+      <div class="voice-area">
+        <button class="voice-btn idle" id="voiceBtn" onclick="toggleVoiceRecording('writeContent')">🎤</button>
+        <span class="voice-status" id="voiceStatus">マイクボタンで声を録音できるよ</span>
+      </div>
+      <textarea class="form-input" id="writeContent" placeholder="きょうのできごとや気づいたことを書いてね。&#10;マイクボタンを押すと声で入力できるよ！" rows="6"></textarea>
+    </div>
+
+    <div class="flex gap-1" style="justify-content:flex-end;">
+      <button class="btn btn-secondary" onclick="closeWriteModal()">キャンセル</button>
+      <button class="btn btn-primary" id="saveBtn" onclick="saveReflection()">
+        💾 ほぞんする
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 詳細モーダル ===== -->
+<div class="modal-overlay" id="detailModal">
+  <div class="modal" style="max-width:700px;">
+    <div class="modal-header">
+      <h2 id="detailTitle"></h2>
+      <button class="modal-close" onclick="closeDetailModal()">✕</button>
+    </div>
+    <div id="detailBody"></div>
+  </div>
+</div>
+
+<!-- ===== 追記モーダル ===== -->
+<div class="modal-overlay" id="additionModal">
+  <div class="modal" style="max-width:500px;">
+    <div class="modal-header">
+      <h2>💭 もっと教えて！</h2>
+      <button class="modal-close" onclick="closeAdditionModal()">✕</button>
+    </div>
+    <div class="ai-feedback-box mb-2">
+      <p class="question-text" id="additionQuestion"></p>
+    </div>
+    <div class="form-group">
+      <label>こたえを書いてね</label>
+      <div class="voice-area">
+        <button class="voice-btn idle" id="voiceBtnAddition" onclick="toggleVoiceRecording('additionContent')">🎤</button>
+        <span class="voice-status" id="voiceStatusAddition">マイクボタンで声を録音できるよ</span>
+      </div>
+      <textarea class="form-input" id="additionContent" placeholder="おもったことを書いてね" rows="4"></textarea>
+    </div>
+    <div class="flex gap-1" style="justify-content:flex-end;">
+      <button class="btn btn-secondary" onclick="closeAdditionModal()">キャンセル</button>
+      <button class="btn btn-primary" onclick="saveAddition()">📨 おくる</button>
+    </div>
+  </div>
+</div>
+
+<!-- トースト通知 -->
+<div class="toast-container" id="toastContainer"></div>
+
+<?!= include('StudentJS') ?>
+
+</body>
+</html>
